@@ -1,65 +1,17 @@
-use std::{env, fs};
+mod todo;
+mod panel;
+
 use std::fs::File;
 use std::io::{BufReader, Read};
-use serde::{Serialize, Deserialize};
 
-#[derive(Serialize, Deserialize, Debug)]
-struct TodoList {
-    name: String,
-    todos: Vec<Todo>,
-}
+pub use crate::todo::{TodoList, Todo};
+pub use crate::panel::Panel;
 
-impl TodoList {
-    fn to_json(&self) -> String {
-        return serde_json::to_string(self).expect("Error serializing json");
-    }
+fn main() {
+    let list = open_todo_list(String::from("tester"));
+    let mut panel = Panel::new(list);
 
-    fn save(&self, dir_path: String) -> std::io::Result<()> {
-        let json = self.to_json();
-        // todo clean path
-        let path = format!("{}/{}.json", dir_path, self.name);
-
-        fs::write(&path, &json)
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct Todo {
-    id: i16,
-    item: String,
-    priority: i8,
-    tags: Vec<String>,
-    done: bool,
-}
-
-impl Todo {
-    fn print(&self) {
-        let item: String;
-
-        if self.done {
-            item = format!("[x] {}", self.item);
-        } else {
-            item = format!("[ ] {}", self.item);
-        }
-
-        println!("{}", item);
-    }
-}
-
-fn main() -> Result<(), String> {
-    let args: Vec<String> = env::args().skip(1).collect();
-    let command = &get_command(args.clone())[..];
-
-    let res = match command {
-        "-a" => add_todo(args),
-        "-n" => add_todo_list(args),
-        "-lt" => list_todos(),
-        _ => Err(format!("Unknown command {}", command)),
-    };
-
-    res.expect("Error");
-
-    Ok(())
+    panel.start();
 }
 
 fn get_command(args: Vec<String>) -> String {
@@ -72,16 +24,6 @@ fn get_command(args: Vec<String>) -> String {
     }
 
     return "-a".to_string();
-}
-
-fn list_todos() -> Result<(), String> {
-    let list = open_todo_list(String::from("tester"));
-
-    for item in list.todos {
-        item.print();
-    }
-
-    Ok(())
 }
 
 fn add_todo(args: Vec<String>) -> Result<(), String> {
@@ -141,7 +83,4 @@ fn list_todo_lists() -> Result<(), String> {
     println!("list todo lists");
     Ok(())
 }
-
-
-
 
