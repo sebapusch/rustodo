@@ -49,11 +49,6 @@ impl<'a> Panel<'a> {
             print!("{}{}", cursor::Show, style::Reset);
             return;
         }
-
-        if output == KeyOutput::COMMAND {
-            self.command();
-            self.start();
-        }
     }
 
     fn print_list(&mut self) {
@@ -64,6 +59,8 @@ impl<'a> Panel<'a> {
                 clear::BeforeCursor,
                 cursor::Goto(1, 1),
                 cursor::Hide);
+
+        stdout().flush().unwrap();
 
         for i in 0..self.list.todos.len() {
             let todo = self.list.todos[i].clone();
@@ -88,36 +85,85 @@ impl<'a> Panel<'a> {
         }
     }
 
-    fn command(&self) {
-        print!("{}{}", cursor::Goto(0, 5), cursor::Show);
-        println!("uhmmmm");
-
-        let mut input = String::new();
-        match stdin().read_line(&mut input) {
-            Ok(n) => {
-                println!("{n} bytes read");
-                println!("{input}");
-            }
-            Err(error) => println!("error: {error}"),
-        }
-    }
-
     fn success_message(&self, msg: String) {
-        let (_, terminal_height) = terminal_size().unwrap();
-        print!("\r{}{}{}{}",
-                cursor::Goto(1, terminal_height),
-                color::Fg(color::Green),
-                msg,
-                style::Reset);
+        self.cursor_bottom();
+        print!("\r{}{}{}",
+               color::Fg(color::Green),
+               msg,
+               style::Reset);
         stdout().flush().unwrap();
 
-        let clear_thread = thread::spawn(move || {
-            thread::sleep(Duration::from_secs(2));
-            print!("{}{}",
-                   cursor::Goto(1, terminal_height - 1),
-                   clear::AfterCursor);
-            stdout().flush().unwrap();
+        thread::sleep(Duration::from_secs(1));
+
+        self.clear_last_ln();
+    }
+
+    fn delete_todo(&mut self) -> bool {
+        self.cursor_bottom();
+        print!("\r{} Are you sure? (y/n) {}", color::Fg(color::Red), style::Reset);
+        stdout().flush().unwrap();
+
+        let confirm = self.confirm();
+
+        if confirm {
+            self.list.todos.remove(self.highlighted);
+
+            if self.highlighted == self.list.todos.len() {
+                self.highlighted -= 1;
+            }
+        }
+
+        self.clear_last_ln();
+
+        confirm
+    }
+
+    fn confirm(&self) -> bool {
+        let stdin = stdin();
+
+        for c in stdin.keys() {
+            return match c.unwrap() {
+                Key::Char('y') => true,
+                _ => false
+            }
+        }
+
+        false
+    }
+
+    fn add_todo(&mut self) {
+
+        self.cursor_bottom();
+        print!("{}", cursor::Show);
+        self.stdout.suspend_raw_mode().unwrap();
+        stdout().flush().unwrap();
+
+        let mut input = String::new();
+        stdin().read_line(&mut input).unwrap();
+
+        self.list.todos.push(Todo {
+            id: 2,
+            item: input.trim_end().to_string(),
+            priority: 0,
+            tags: vec![],
+            done: false,
         });
+
+        self.stdout.activate_raw_mode().unwrap();
+        self.clear_last_ln();
+    }
+
+    fn cursor_bottom(&self) {
+        let (_, terminal_height) = terminal_size().unwrap();
+        print!("\r{}", cursor::Goto(1, terminal_height));
+        stdout().flush().unwrap();
+    }
+
+    fn clear_last_ln(&self) {
+        let (_, terminal_height) = terminal_size().unwrap();
+        print!("\r{}", cursor::Goto(1, terminal_height - 3));
+        print!("{}", clear::AfterCursor);
+        stdout().flush().unwrap();
     }
 
     fn process_key(&mut self) -> KeyOutput {
@@ -151,6 +197,15 @@ impl<'a> Panel<'a> {
                     self.success_message(String::from("Successfully saved list"));
                 },
                 Key::Esc => return KeyOutput::COMMAND,
+                Key::Char('a') => {
+                    self.add_todo();
+                    self.print_list();
+                },
+                Key::Char('d') => {
+                    if self.delete_todo() {
+                        self.print_list();
+                    }
+                },
                 _ => {}
             }
         }
