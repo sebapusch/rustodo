@@ -1,16 +1,11 @@
 pub use crate::todo::{TodoList, Todo};
+pub use crate::draw::draw;
 
-use std::thread;
-use std::io::{Read, Write, stdout, stdin, Bytes, StdoutLock};
-use std::time::Duration;
+use std::io::{stdout, stdin, StdoutLock};
 use termion::raw::{IntoRawMode, RawTerminal};
-use termion::style;
-use termion::color;
 use termion::event::Key;
 use termion::input::TermRead;
-use termion::cursor;
-use termion::terminal_size;
-use termion::clear;
+use draw::FlashType;
 
 
 #[derive(PartialEq, Eq)]
@@ -23,6 +18,9 @@ pub struct Panel<'a> {
     list: TodoList,
     highlighted: usize,
     stdout: RawTerminal<StdoutLock<'a>>,
+}
+
+fn clear_last_ln() {
 }
 
 impl<'a> Panel<'a> {
@@ -40,27 +38,20 @@ impl<'a> Panel<'a> {
 
     pub fn start (&mut self) {
 
-        print!("{}", clear::All);
-
+        draw::clear_all();
         self.print_list();
+
         let output = self.process_key();
 
         if output == KeyOutput::QUIT {
-            print!("{}{}", cursor::Show, style::Reset);
+            draw::reset();
             return;
         }
     }
 
     fn print_list(&mut self) {
-        let (_, terminal_height) = terminal_size().unwrap();
 
-        print!("{}{}{}{}",
-                cursor::Goto(1, terminal_height - 1),
-                clear::BeforeCursor,
-                cursor::Goto(1, 1),
-                cursor::Hide);
-
-        stdout().flush().unwrap();
+        draw::clear_content();
 
         for i in 0..self.list.todos.len() {
             let todo = self.list.todos[i].clone();
@@ -78,30 +69,21 @@ impl<'a> Panel<'a> {
             check = "[ ]";
         }
 
+        let mut item = todo.item.clone();
+
         if i == self.highlighted {
-            print!("\r{}{} {}{}\n", style::Bold, check, todo.item, style::Reset);
-        } else {
-            print!("\r{} {}\n", check, todo.item);
+
+            item = draw::bold(item);
         }
-    }
 
-    fn success_message(&self, msg: String) {
-        self.cursor_bottom();
-        print!("\r{}{}{}",
-               color::Fg(color::Green),
-               msg,
-               style::Reset);
-        stdout().flush().unwrap();
 
-        thread::sleep(Duration::from_secs(1));
-
-        self.clear_last_ln();
+        draw::text_ln(format!("{} {}", check, item));
     }
 
     fn delete_todo(&mut self) -> bool {
-        self.cursor_bottom();
-        print!("\r{} Are you sure? (y/n) {}", color::Fg(color::Red), style::Reset);
-        stdout().flush().unwrap();
+        
+        draw::cursor_bottom(true);
+        draw::warning(String::from("Are you sure? (y/n)"));
 
         let confirm = self.confirm();
 
@@ -113,57 +95,36 @@ impl<'a> Panel<'a> {
             }
         }
 
-        self.clear_last_ln();
+        draw::clear_bottom();
 
         confirm
     }
 
-    fn confirm(&self) -> bool {
-        let stdin = stdin();
+    fn edit_todo(&mut self) {
 
-        for c in stdin.keys() {
-            return match c.unwrap() {
-                Key::Char('y') => true,
-                _ => false
-            }
-        }
+        draw::cursor_bottom(false);
+        draw::text(format!("({}) ", self.list.todos[self.highlighted].item));
 
-        false
+        self.list.todos[self.highlighted].item = self.input();
+        
+        clear_last_ln();
     }
 
     fn add_todo(&mut self) {
+        
+        draw::cursor_bottom(true);
 
-        self.cursor_bottom();
-        print!("{}", cursor::Show);
-        self.stdout.suspend_raw_mode().unwrap();
-        stdout().flush().unwrap();
-
-        let mut input = String::new();
-        stdin().read_line(&mut input).unwrap();
+        let item = self.input();
 
         self.list.todos.push(Todo {
             id: 2,
-            item: input.trim_end().to_string(),
+            item,
             priority: 0,
             tags: vec![],
             done: false,
         });
-
-        self.stdout.activate_raw_mode().unwrap();
-        self.clear_last_ln();
-    }
-
-    fn cursor_bottom(&self) {
-        let (_, terminal_height) = terminal_size().unwrap();
-        print!("\r{}", cursor::Goto(1, terminal_height));
-        stdout().flush().unwrap();
-    }
-
-    fn clear_last_ln(&self) {
-        let (_, terminal_height) = terminal_size().unwrap();
-        print!("\r{}", cursor::Goto(1, terminal_height - 3));
-        print!("{}", clear::AfterCursor);
-        stdout().flush().unwrap();
+        
+        draw::clear_bottom();
     }
 
     fn process_key(&mut self) -> KeyOutput {
@@ -190,17 +151,21 @@ impl<'a> Panel<'a> {
                     self.print_list();
                 },
                 Key::Char('s') => {
-                    self.list.save(String::from("./stuff"))
+                    self.list.save(String::from("/home/sebastianp/todos"))
                         .expect("Error");
 
 
-                    self.success_message(String::from("Successfully saved list"));
+                    draw::flash_msg(FlashType::Success, String::from("Successfully saved list"));
                 },
                 Key::Esc => return KeyOutput::COMMAND,
                 Key::Char('a') => {
                     self.add_todo();
                     self.print_list();
                 },
+                Key::Char('e') => {
+                    self.edit_todo();
+                    self.print_list();
+                }
                 Key::Char('d') => {
                     if self.delete_todo() {
                         self.print_list();
@@ -212,4 +177,32 @@ impl<'a> Panel<'a> {
 
         return KeyOutput::QUIT;
     }
+
+    fn input(&mut self) -> String {
+
+        self.stdout.suspend_raw_mode().unwrap();
+
+        let mut buffer = String::with_capacity(20);
+
+        stdin().read_line(&mut buffer).unwrap();
+
+        let input = buffer.to_owned().trim_end().parse().unwrap();
+        self.stdout.activate_raw_mode().unwrap();
+
+        input
+    }
+
+    fn confirm(&self) -> bool {
+        let stdin = stdin();
+
+        for c in stdin.keys() {
+            return match c.unwrap() {
+                Key::Char('y') => true,
+                _ => false
+            }
+        }
+
+        false
+    }
+
 }
