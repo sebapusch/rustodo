@@ -1,3 +1,4 @@
+pub use crate::Settings;
 pub use crate::todo::{TodoList, Todo};
 pub use crate::draw::draw;
 
@@ -18,6 +19,7 @@ pub struct Panel<'a> {
     list: TodoList,
     highlighted: usize,
     stdout: RawTerminal<StdoutLock<'a>>,
+    settings: Settings,
 }
 
 fn clear_last_ln() {
@@ -25,7 +27,7 @@ fn clear_last_ln() {
 
 impl<'a> Panel<'a> {
 
-    pub fn new (list: TodoList) -> Self {
+    pub fn new (list: TodoList, settings: Settings) -> Self {
         let stdout = stdout();
         let stdout = stdout.lock().into_raw_mode().unwrap();
 
@@ -33,6 +35,7 @@ impl<'a> Panel<'a> {
             list,
             highlighted: 0,
             stdout,
+            settings,
         }
     }
 
@@ -64,9 +67,9 @@ impl<'a> Panel<'a> {
         let check;
 
         if todo.done {
-            check = "[x]";
+            check = self.settings.checked_symbol.clone();
         } else {
-            check = "[ ]";
+            check = self.settings.unchecked_symbol.clone();
         }
 
         let mut item = todo.item.clone();
@@ -151,7 +154,7 @@ impl<'a> Panel<'a> {
                     self.print_list();
                 },
                 Key::Char('s') => {
-                    self.list.save(String::from("/home/sebastianp/todos"))
+                    self.list.save(self.settings.todopath.clone())
                         .expect("Error");
 
 

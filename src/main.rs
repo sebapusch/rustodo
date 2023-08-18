@@ -1,18 +1,23 @@
 mod todo;
 mod panel;
 mod draw;
+mod settings;
 
-use std::env;
+use std::{env, fs};
 use std::fs::File;
 use std::io::{BufReader, Read};
 
 pub use crate::todo::{TodoList, Todo};
 pub use crate::panel::Panel;
+pub use crate::settings::Settings;
 
 const PANEL: &str = "-p";
 const NEW: &str = "-n";
 
 fn main() {
+
+
+    let settings = load_settings().unwrap();
 
     let mut args: Vec<String> = env::args().collect();
     args = args[1..].to_owned();
@@ -21,16 +26,16 @@ fn main() {
 
     match command.unwrap() {
         PANEL => {
-            let list = open_todo_list(args[0].to_string());
-            let mut panel = Panel::new(list);
+            let list = open_todo_list(args[0].to_string(), settings.todopath.clone());
+            let mut panel = Panel::new(list, settings);
 
             panel.start();
         },
         NEW => {
-            let list = add_todo_list(args)
+            let list = add_todo_list(args, settings.todopath.clone())
                 .expect("Error creating list");
 
-            let mut panel = Panel::new(list);
+                let mut panel = Panel::new(list, settings);
 
             panel.start();
         }
@@ -75,7 +80,7 @@ fn get_command(args: Vec<String>) -> Result<&'static str, String> {
 //    Ok(())
 //}
 
-fn add_todo_list(args: Vec<String>) -> Result<TodoList, String> {
+fn add_todo_list(args: Vec<String>, todopath: String) -> Result<TodoList, String> {
 
     if args.len() < 2 {
         return Err("Please provide a valid list name".to_string());
@@ -86,15 +91,15 @@ fn add_todo_list(args: Vec<String>) -> Result<TodoList, String> {
         todos: Vec::new(),
     };
 
-    todo_list.save(String::from("/home/sebastianp/todos"))
+    todo_list.save(todopath)
         .expect("Error writing file");
 
     Ok(todo_list)
     
 }
 
-fn open_todo_list(name: String) -> TodoList {
-    let path = format!("/home/sebastianp/todos/{}.json", name);
+fn open_todo_list(name: String, todopath: String) -> TodoList {
+    let path = format!("{}/{}.json", todopath, name);
     let mut data = String::new();
 
 
@@ -104,6 +109,20 @@ fn open_todo_list(name: String) -> TodoList {
     br.read_to_string(&mut data).expect("Unable to read string");
 
     serde_json::from_str(&data).expect("Error parsing todo list")
+}
+
+fn load_settings() -> Result<Settings, String> {
+
+
+    let settings = match Settings::load() {
+        Err(err) => return Err(err),
+        Ok(s) => s,
+    };
+    
+    match fs::create_dir_all(settings.todopath.clone()) {
+        Ok(_) => return Ok(settings),
+        Err(err) => return Err(format!("Unable to load todo path: {}", err)),
+    };
 }
 
 //fn list_todo_lists() -> Result<(), String> {
