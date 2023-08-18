@@ -19,6 +19,24 @@ impl TodoList {
 
         fs::write(&path, &json)
     }
+
+    pub fn completed(&self) -> usize {
+        
+        let mut completed = 0;
+
+        for item in self.todos.to_owned() {
+    
+            if item.done {
+                completed += 1;
+            }
+        }
+
+        completed
+    }
+
+    pub fn total(&self) -> usize {
+        self.todos.len()
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

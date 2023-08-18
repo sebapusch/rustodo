@@ -4,7 +4,7 @@ mod draw;
 mod settings;
 
 use std::{env, fs};
-use std::fs::File;
+use std::fs::{File, read_dir};
 use std::io::{BufReader, Read};
 
 pub use crate::todo::{TodoList, Todo};
@@ -13,11 +13,18 @@ pub use crate::settings::Settings;
 
 const PANEL: &str = "-p";
 const NEW: &str = "-n";
+const LIST: &str = "-l";
 
 fn main() {
 
 
     let settings = load_settings().unwrap();
+
+    if false {
+
+        list_todo_lists(settings.todopath.clone()).unwrap();
+        return;
+    }
 
     let mut args: Vec<String> = env::args().collect();
     args = args[1..].to_owned();
@@ -38,7 +45,10 @@ fn main() {
                 let mut panel = Panel::new(list, settings);
 
             panel.start();
-        }
+        },
+        LIST => {
+            list_todo_lists(settings.todopath.to_owned()).unwrap();
+        },
         _ => {}
     }
 }
@@ -49,36 +59,45 @@ fn get_command(args: Vec<String>) -> Result<&'static str, String> {
         return Err(String::from("Please enter a valid command"));
     }
 
-    if args[0].starts_with("-") {
+    if args[0].starts_with("-n") {
         return Ok("-n");
+    }
+
+    if args[0].starts_with("-l") {
+        return Ok("-l");
     }
 
     return Ok("-p");
 }
 
-//fn add_todo(args: Vec<String>) -> Result<(), String> {
-//    if args.is_empty() {
-//        return Err(String::from("Please enter a valid todo item"));
-//    }
+fn list_todo_lists(todopath: String) -> Result<(), String> {
+    
+    let iter = match read_dir(todopath.clone()) {
+        Ok(entries) => entries,
+        Err(err) => return Err(format!("Unable to read todo lists at path '{}': {}", todopath, err))
+    };
+    
+    for file in iter { 
 
-//    let mut list = open_todo_list(String::from("tester"));
+        let entry = match file {
+            Ok(entry) => entry,
+            _ => continue,
+        };
 
-//    let todo = Todo {
-//        item: args.join(" "),
-//        priority: 1,
-//        tags: Vec::new(),
-//        done: false,
-//        id: 1,
-//    };
+        let entry_type = entry.file_type().unwrap();
 
-//    list.todos.push(todo);
+        if !entry_type.is_file() {
+            continue;
+        }
 
-//    list.save(String::from("/home/sebastianp/todos"))
-//        .expect("Unable to save file");
+        let todo_list = open_todo_list(entry.file_name().to_str().to_owned().unwrap().to_string(), todopath.to_owned());
 
-//    println!("Stored todo item");
-//    Ok(())
-//}
+        println!("{}: {}/{}", todo_list.name, todo_list.completed(), todo_list.total());
+    }
+ 
+    Ok(())
+
+}
 
 fn add_todo_list(args: Vec<String>, todopath: String) -> Result<TodoList, String> {
 
@@ -99,7 +118,7 @@ fn add_todo_list(args: Vec<String>, todopath: String) -> Result<TodoList, String
 }
 
 fn open_todo_list(name: String, todopath: String) -> TodoList {
-    let path = format!("{}/{}.json", todopath, name);
+    let path = format!("{}/{}.json", todopath, name.replace(".json", ""));
     let mut data = String::new();
 
 
@@ -125,8 +144,4 @@ fn load_settings() -> Result<Settings, String> {
     };
 }
 
-//fn list_todo_lists() -> Result<(), String> {
-//    println!("list todo lists");
-//    Ok(())
-//}
 
