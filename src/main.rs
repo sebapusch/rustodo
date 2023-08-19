@@ -5,7 +5,7 @@ mod settings;
 
 use std::{env, fs};
 use std::fs::{File, read_dir};
-use std::io::{BufReader, Read};
+use std::io::Read;
 
 pub use crate::todo::{TodoList, Todo};
 pub use crate::panel::Panel;
@@ -20,40 +20,34 @@ fn main() {
 
     let settings = load_settings().unwrap();
 
-    if false {
-
-        list_todo_lists(settings.todopath.clone()).unwrap();
-        return;
-    }
-
     let mut args: Vec<String> = env::args().collect();
     args = args[1..].to_owned();
 
-    let command = get_command(args.clone());
+    let command = get_command(&args);
 
     match command.unwrap() {
         PANEL => {
-            let list = open_todo_list(args[0].to_string(), settings.todopath.clone());
+            let list = open_todo_list(&settings, &args[0].to_string()).unwrap();
+
             let mut panel = Panel::new(list, settings);
 
             panel.start();
         },
         NEW => {
-            let list = add_todo_list(args, settings.todopath.clone())
-                .expect("Error creating list");
+            let list = add_todo_list(args, settings.todopath.clone()).unwrap();
 
-                let mut panel = Panel::new(list, settings);
+            let mut panel = Panel::new(list, settings);
 
             panel.start();
         },
         LIST => {
-            list_todo_lists(settings.todopath.to_owned()).unwrap();
+            list_todo_lists(&settings).unwrap();
         },
         _ => {}
     }
 }
 
-fn get_command(args: Vec<String>) -> Result<&'static str, String> {
+fn get_command(args: &Vec<String>) -> Result<&'static str, String> {
 
     if args.is_empty() {
         return Err(String::from("Please enter a valid command"));
@@ -70,11 +64,13 @@ fn get_command(args: Vec<String>) -> Result<&'static str, String> {
     return Ok("-p");
 }
 
-fn list_todo_lists(todopath: String) -> Result<(), String> {
-    
-    let iter = match read_dir(todopath.clone()) {
+fn list_todo_lists(settings: &Settings) -> Result<(), String> {
+   
+    let path = &settings.todopath;
+
+    let iter = match read_dir(path) {
         Ok(entries) => entries,
-        Err(err) => return Err(format!("Unable to read todo lists at path '{}': {}", todopath, err))
+        Err(err) => return Err(format!("Unable to read todo lists at path '{}': {}", path, err))
     };
     
     for file in iter { 
@@ -90,7 +86,12 @@ fn list_todo_lists(todopath: String) -> Result<(), String> {
             continue;
         }
 
-        let todo_list = open_todo_list(entry.file_name().to_str().to_owned().unwrap().to_string(), todopath.to_owned());
+        let entry_name = entry.file_name().to_str().to_owned().unwrap().to_string();
+
+        let todo_list = match open_todo_list(settings, &entry_name) {
+            Ok(todo_list) => todo_list,
+            Err(_) => continue,
+        };
 
         println!("{}: {}/{}", todo_list.name, todo_list.completed(), todo_list.total());
     }
@@ -117,17 +118,29 @@ fn add_todo_list(args: Vec<String>, todopath: String) -> Result<TodoList, String
     
 }
 
-fn open_todo_list(name: String, todopath: String) -> TodoList {
-    let path = format!("{}/{}.json", todopath, name.replace(".json", ""));
+fn open_todo_list(settings: &Settings, name: &String) -> Result<TodoList, String> {
+
+    let dir_path = &settings.todopath;
+
+    let path = format!("{}/{}.json", &dir_path, &name.replace(".json", ""));
+
+    let mut file = match File::open(path) {
+        Ok(file) => file,
+        Err(err) => return Err(format!("Unable to open todo file: {}", err))
+    };
+
+
     let mut data = String::new();
 
+    match file.read_to_string(&mut data) {
+        Err(err) => return Err(format!("Unable to read todo file: {}", err)),
+        _ => (),
+    };
 
-    let file = File::open(path.clone()).expect(format!("Unable to open file at path '{:?}'", path.to_owned()).as_str());
-    let mut br = BufReader::new(file);
-
-    br.read_to_string(&mut data).expect("Unable to read string");
-
-    serde_json::from_str(&data).expect("Error parsing todo list")
+    match serde_json::from_str(data.as_str()) {
+        Ok(todo_list) => Ok(todo_list),
+        Err(err) => Err(format!("Unable to parse todo list: {}", err)),
+    }
 }
 
 fn load_settings() -> Result<Settings, String> {
