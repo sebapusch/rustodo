@@ -22,9 +22,6 @@ pub struct Panel<'a> {
     settings: Settings,
 }
 
-fn clear_last_ln() {
-}
-
 impl<'a> Panel<'a> {
 
     pub fn new (list: TodoList, settings: Settings) -> Self {
@@ -109,8 +106,8 @@ impl<'a> Panel<'a> {
         draw::text(format!("({}) ", self.list.todos[self.highlighted].item));
 
         self.list.todos[self.highlighted].item = self.input();
-        
-        clear_last_ln();
+
+        draw::clear_bottom();
     }
 
     fn add_todo(&mut self) {
