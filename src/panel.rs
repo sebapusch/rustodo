@@ -154,7 +154,7 @@ impl<'a> Panel<'a> {
                     self.print_list();
                 },
                 Key::Char('s') => {
-                    self.list.save(self.settings.todopath.clone())
+                    self.list.save(&self.settings.todopath)
                         .expect("Error");
 
 

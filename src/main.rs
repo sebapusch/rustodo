@@ -34,7 +34,7 @@ fn main() {
             panel.start();
         },
         NEW => {
-            let list = add_todo_list(args, settings.todopath.clone()).unwrap();
+            let list = add_todo_list(&settings, args).unwrap();
 
             let mut panel = Panel::new(list, settings);
 
@@ -100,10 +100,10 @@ fn list_todo_lists(settings: &Settings) -> Result<(), String> {
 
 }
 
-fn add_todo_list(args: Vec<String>, todopath: String) -> Result<TodoList, String> {
+fn add_todo_list(settings: &Settings, args: Vec<String>) -> Result<TodoList, String> {
 
     if args.len() < 2 {
-        return Err("Please provide a valid list name".to_string());
+        return Err(String::from("Please provide a valid list name"));
     }
 
     let todo_list = TodoList {
@@ -111,7 +111,7 @@ fn add_todo_list(args: Vec<String>, todopath: String) -> Result<TodoList, String
         todos: Vec::new(),
     };
 
-    todo_list.save(todopath)
+    todo_list.save(&settings.todopath)
         .expect("Error writing file");
 
     Ok(todo_list)

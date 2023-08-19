@@ -12,7 +12,7 @@ impl TodoList {
         return serde_json::to_string(self).expect("Error serializing json");
     }
 
-    pub fn save(&self, dir_path: String) -> std::io::Result<()> {
+    pub fn save(&self, dir_path: &String) -> std::io::Result<()> {
         let json = self.to_json();
         // todo clean path
         let path = format!("{}/{}.json", dir_path, self.name);
