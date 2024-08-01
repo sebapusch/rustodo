@@ -123,6 +123,20 @@ impl<'a> Panel<'a> {
         draw::clear_bottom();
     }
 
+    fn move_down(&mut self) {
+        let tmp = self.list.todos[self.highlighted].clone();
+        self.list.todos[self.highlighted] = self.list.todos[self.highlighted + 1].clone();
+        self.list.todos[self.highlighted + 1] = tmp;
+        self.highlighted += 1;
+    }
+
+    fn move_up(&mut self) {
+        let tmp = self.list.todos[self.highlighted].clone();
+        self.list.todos[self.highlighted] = self.list.todos[self.highlighted - 1].clone();
+        self.list.todos[self.highlighted - 1] = tmp;
+        self.highlighted -= 1;
+    }
+
     fn process_key(&mut self) -> KeyOutput {
         let stdin = stdin();
 
@@ -168,6 +182,18 @@ impl<'a> Panel<'a> {
                         if self.delete_todo() {
                             self.print_list();
                         }
+                    }
+                }
+                Key::Char('j') => {
+                    if self.list.todos.len() >= 2 && self.highlighted < self.list.todos.len() - 1 {
+                        self.move_down();
+                        self.print_list();
+                    }
+                }
+                Key::Char('k') => {
+                    if self.list.todos.len() >= 2 && self.highlighted > 0 {
+                        self.move_up();
+                        self.print_list();
                     }
                 }
                 _ => {}
