@@ -3,7 +3,7 @@ pub use crate::todo::{Todo, TodoList};
 pub use crate::Settings;
 
 use draw::FlashType;
-use std::io::{stdin, stdout, StdoutLock};
+use std::io::{stdin, stdout, Stdout};
 use termion::event::Key;
 use termion::input::TermRead;
 use termion::raw::{IntoRawMode, RawTerminal};
@@ -14,18 +14,16 @@ enum KeyOutput {
     COMMAND,
 }
 
-pub struct Panel<'a> {
+pub struct Panel {
     list: TodoList,
     highlighted: usize,
-    stdout: RawTerminal<StdoutLock<'a>>,
+    stdout: RawTerminal<Stdout>,
     settings: Settings,
 }
 
-impl<'a> Panel<'a> {
+impl Panel {
     pub fn new(list: TodoList, settings: Settings) -> Self {
-        let stdout = stdout();
-        let stdout = stdout.lock().into_raw_mode().unwrap();
-
+        let stdout = stdout().into_raw_mode().unwrap();
         Panel {
             list,
             highlighted: 0,
@@ -163,7 +161,6 @@ impl<'a> Panel<'a> {
                 }
                 Key::Char('s') => {
                     self.list.save(&self.settings.todopath).expect("Error");
-
                     draw::flash_msg(FlashType::Success, String::from("Successfully saved list"));
                 }
                 Key::Esc => return KeyOutput::COMMAND,
@@ -184,13 +181,13 @@ impl<'a> Panel<'a> {
                         }
                     }
                 }
-                Key::Char('j') => {
+                Key::Right => {
                     if self.list.todos.len() >= 2 && self.highlighted < self.list.todos.len() - 1 {
                         self.move_down();
                         self.print_list();
                     }
                 }
-                Key::Char('k') => {
+                Key::Left => {
                     if self.list.todos.len() >= 2 && self.highlighted > 0 {
                         self.move_up();
                         self.print_list();

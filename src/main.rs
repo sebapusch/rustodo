@@ -1,3 +1,4 @@
+mod debug;
 mod draw;
 mod panel;
 mod settings;

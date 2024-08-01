@@ -1,5 +1,4 @@
 pub mod draw {
-
     use std::io::{stdout, Write};
     use std::thread;
     use std::time::Duration;
@@ -77,10 +76,11 @@ pub mod draw {
 
     pub fn clear_bottom() {
         let (_, terminal_height) = terminal_size().unwrap();
-
-        print!("\r{}", cursor::Goto(1, terminal_height - 3));
-        print!("{}", clear::AfterCursor);
-
+        print!(
+            "\r{}{}",
+            cursor::Goto(1, terminal_height - 3),
+            clear::AfterCursor,
+        );
         flush();
     }
 
@@ -102,17 +102,14 @@ pub mod draw {
             FlashType::Warning => color::Fg(color::Yellow).to_string(),
             FlashType::Danger => color::Fg(color::Red).to_string(),
         };
-
         cursor_bottom(false);
-
         print!("\r{}{}{}", color, message, style::Reset);
-
         flush();
 
-        thread::sleep(Duration::from_secs(1));
-
-        clear_bottom();
-
-        //thread::spawn(|| {}); todo don't block main thread
+        thread::spawn(|| {
+            thread::sleep(Duration::from_secs(2));
+            clear_bottom();
+            flush();
+        });
     }
 }
