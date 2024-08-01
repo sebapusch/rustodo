@@ -1,5 +1,5 @@
 
-## RUSTODO [WIP]
+## RUSTODO
 
 Primitive interactive terminal TODO app built with rust 
 
