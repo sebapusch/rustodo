@@ -1,17 +1,38 @@
-pub use crate::draw::draw;
+use crate::draw::{self, danger, position};
+use crate::reader::Reader;
 pub use crate::todo::{Todo, TodoList};
 pub use crate::Settings;
 
-use draw::FlashType;
-use std::io::{stdin, stdout, Stdout};
+use std::collections::HashMap;
+use std::io::{stdout, Stdout, Write};
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::thread;
+use std::time::Duration;
 use termion::event::Key;
-use termion::input::TermRead;
 use termion::raw::{IntoRawMode, RawTerminal};
+use termion::terminal_size;
 
 #[derive(PartialEq, Eq)]
-enum KeyOutput {
-    QUIT,
-    COMMAND,
+pub enum Operation {
+    Create,
+    Update,
+}
+
+#[derive(PartialEq, Eq)]
+pub enum Event {
+    Refresh,
+    Quit,
+    MoveUp,
+    MoveDown,
+    HighlightUp,
+    HighlightDown,
+    Toggle,
+    Save,
+    Delete,
+    Input(Operation),
+    Commit(Operation, String),
+    KeyPressed(Key),
+    IoError(String),
 }
 
 pub struct Panel {
@@ -19,97 +40,119 @@ pub struct Panel {
     highlighted: usize,
     stdout: RawTerminal<Stdout>,
     settings: Settings,
+    buffer: String,
+    event_sender: Sender<Event>,
+    event_receiver: Receiver<Event>,
+    event_queue: HashMap<Key, Vec<fn(&mut Panel)>>,
+    reader: Reader,
 }
 
 impl Panel {
     pub fn new(list: TodoList, settings: Settings) -> Self {
         let stdout = stdout().into_raw_mode().unwrap();
+        let (event_sender, event_receiver) = mpsc::channel();
+        let event_queue = HashMap::new();
+        let reader = Reader::new(event_sender.clone());
         Panel {
             list,
             highlighted: 0,
             stdout,
+            reader,
             settings,
+            buffer: String::new(),
+            event_sender,
+            event_receiver,
+            event_queue,
         }
     }
 
     pub fn start(&mut self) {
-        draw::clear_all();
-        self.print_list();
-
-        let output = self.process_key();
-
-        if output == KeyOutput::QUIT {
-            draw::reset();
-            return;
-        }
+        self.refresh();
+        self.start_loop();
     }
 
-    fn print_list(&mut self) {
-        draw::clear_content();
+    fn refresh(&mut self) {
+        self.push(draw::clear_all());
+        self.push(draw::hide_cursor());
+        let content = self.draw();
+        self.push(content);
+        self.render();
+    }
+
+    fn render(&mut self) {
+        self.stdout.write_all(self.buffer.as_bytes()).unwrap();
+        self.stdout.flush().unwrap();
+    }
+
+    fn draw(&mut self) -> String {
+        let mut out = String::new();
 
         if self.list.todos.len() == 0 {
-            draw::text("Empty list...".into());
+            out = "Empty list...".into();
         } else {
             for i in 0..self.list.todos.len() {
                 let todo = self.list.todos[i].clone();
-                self.print_todo(&todo, i);
+                out.push_str(self.draw_todo(&todo, i).as_str());
             }
+        }
+
+        let title_bottom = format!("{}/{}", self.list.completed(), self.list.total());
+
+        draw::bordered(out, self.list.name.clone(), title_bottom, 100)
+    }
+
+    fn push(&mut self, text: String) {
+        self.buffer.push_str(text.as_str());
+    }
+
+    fn on_click(&mut self, k: Key, callback: fn(&mut Panel)) {
+        if let Some(queue) = self.event_queue.get_mut(&k) {
+            queue.push(callback);
+        } else {
+            self.event_queue.insert(k, vec![callback]);
         }
     }
 
-    fn print_todo(&mut self, todo: &Todo, i: usize) {
-        let check;
+    fn draw_todo(&mut self, todo: &Todo, i: usize) -> String {
+        let mut out = String::new();
 
         if todo.done {
-            check = self.settings.checked_symbol.clone();
+            out.push_str(self.settings.checked_symbol.as_str());
         } else {
-            check = self.settings.unchecked_symbol.clone();
+            out.push_str(self.settings.unchecked_symbol.as_str());
         }
 
-        let mut item = format!("{} {}", check, todo.item.clone());
+        out.push(' ');
+        out.push_str(&todo.item.as_str());
+        out.push('\n');
 
         if i == self.highlighted {
-            item = draw::bold(item);
+            draw::bold(out)
+        } else {
+            out
         }
-
-        draw::text_ln(item);
     }
 
-    fn delete_todo(&mut self) -> bool {
-        draw::cursor_bottom(true);
-        draw::warning(String::from("Are you sure? (y/n)"));
-
-        let confirm = self.confirm();
-
-        if confirm {
-            self.list.todos.remove(self.highlighted);
-
-            if self.list.todos.len() == 0 {
-                self.highlighted = 0;
-            } else if self.highlighted == self.list.todos.len() {
-                self.highlighted -= 1;
+    fn delete_todo(&mut self) {
+        let (_, h) = terminal_size().unwrap();
+        self.push(position(danger("Are you sure? (y/n)".into()), 1, h));
+        self.render();
+        self.on_click(Key::Char('y'), |panel| {
+            panel.list.todos.remove(panel.highlighted);
+            if panel.list.todos.len() == 0 {
+                panel.highlighted = 0;
+            } else if panel.highlighted == panel.list.todos.len() {
+                panel.highlighted -= 1;
             }
-        }
-
-        draw::clear_bottom();
-
-        confirm
+            panel.refresh();
+        });
     }
 
-    fn edit_todo(&mut self) {
-        draw::cursor_bottom(false);
-        draw::text(format!("({}) ", self.list.todos[self.highlighted].item));
-
-        self.list.todos[self.highlighted].item = self.input();
-
-        draw::clear_bottom();
+    fn edit_todo(&mut self, item: String) {
+        self.list.todos[self.highlighted].item = item;
     }
 
-    fn add_todo(&mut self) {
-        draw::cursor_bottom(true);
-
-        let item = self.input();
-
+    fn add_todo(&mut self, item: String) {
         self.list.todos.push(Todo {
             id: 2,
             item,
@@ -117,8 +160,6 @@ impl Panel {
             tags: vec![],
             done: false,
         });
-
-        draw::clear_bottom();
     }
 
     fn move_down(&mut self) {
@@ -135,94 +176,105 @@ impl Panel {
         self.highlighted -= 1;
     }
 
-    fn process_key(&mut self) -> KeyOutput {
-        let stdin = stdin();
-
-        for c in stdin.keys() {
-            match c.unwrap() {
-                Key::Char('q') => return KeyOutput::QUIT,
-                Key::Up => {
-                    if self.highlighted > 0 {
-                        self.highlighted -= 1;
-                        self.print_list();
-                    }
-                }
-                Key::Down => {
-                    if self.highlighted < self.list.todos.len() - 1 {
-                        self.highlighted += 1;
-                        self.print_list();
-                    }
-                }
-                Key::Char('\n') => {
-                    if self.list.todos.len() > 0 {
-                        self.list.todos[self.highlighted].toggle();
-                        self.print_list();
-                    }
-                }
-                Key::Char('s') => {
-                    self.list.save(&self.settings.todopath).expect("Error");
-                    draw::flash_msg(FlashType::Success, String::from("Successfully saved list"));
-                }
-                Key::Esc => return KeyOutput::COMMAND,
-                Key::Char('a') => {
-                    self.add_todo();
-                    self.print_list();
-                }
-                Key::Char('e') => {
-                    if self.list.todos.len() > 0 {
-                        self.edit_todo();
-                        self.print_list();
-                    }
-                }
-                Key::Char('d') => {
-                    if self.list.todos.len() > 0 {
-                        if self.delete_todo() {
-                            self.print_list();
-                        }
-                    }
-                }
-                Key::Right => {
-                    if self.list.todos.len() >= 2 && self.highlighted < self.list.todos.len() - 1 {
-                        self.move_down();
-                        self.print_list();
-                    }
-                }
-                Key::Left => {
-                    if self.list.todos.len() >= 2 && self.highlighted > 0 {
-                        self.move_up();
-                        self.print_list();
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        return KeyOutput::QUIT;
+    fn start_loop(&mut self) {
+        self.reader.listen_events();
+        self.handle_next_event();
     }
 
-    fn input(&mut self) -> String {
+    fn handle_next_event(&mut self) {
+        let event = self.event_receiver.recv().unwrap();
+
+        match event {
+            Event::Refresh => self.refresh(),
+            Event::Quit => return,
+            Event::Input(op) => match op {
+                Operation::Create => self.draw_input("Todo".into()),
+                Operation::Update => {
+                    if self.list.todos.len() > 0 {
+                        self.draw_input(self.list.todos[self.highlighted].item.clone())
+                    }
+                }
+            },
+            Event::Commit(op, content) => {
+                self.stdout.activate_raw_mode().unwrap();
+                match op {
+                    Operation::Create => self.add_todo(content),
+                    Operation::Update => self.edit_todo(content),
+                }
+                self.refresh();
+            }
+            Event::MoveUp => {
+                if self.list.todos.len() >= 2 && self.highlighted < self.list.todos.len() - 1 {
+                    self.move_down();
+                    self.refresh();
+                }
+            }
+            Event::MoveDown => {
+                if self.list.todos.len() >= 2 && self.highlighted > 0 {
+                    self.move_up();
+                    self.refresh();
+                }
+            }
+            Event::HighlightUp => {
+                if self.highlighted > 0 {
+                    self.highlighted -= 1;
+                    self.refresh();
+                }
+            }
+            Event::HighlightDown => {
+                if self.highlighted < self.list.todos.len() - 1 {
+                    self.highlighted += 1;
+                    self.refresh();
+                }
+            }
+            Event::Delete => {
+                if self.list.todos.len() > 0 {
+                    self.delete_todo();
+                }
+            }
+            Event::Toggle => {
+                if self.list.todos.len() > 0 {
+                    self.list.todos[self.highlighted].toggle();
+                    self.refresh();
+                }
+            }
+            Event::Save => {
+                self.list.save(&self.settings.todopath).expect("Error");
+                self.flash_success("Successfully saved list".into());
+            }
+            Event::KeyPressed(k) => {
+                if let Some(queue) = self.event_queue.get_mut(&k).cloned() {
+                    for callback in queue {
+                        callback(self);
+                    }
+                }
+                self.event_queue.remove(&k);
+            }
+            Event::IoError(_) => {}
+        }
+
+        self.handle_next_event();
+    }
+
+    fn draw_input(&mut self, name: String) {
         self.stdout.suspend_raw_mode().unwrap();
 
-        let mut buffer = String::with_capacity(20);
+        let (_, h) = terminal_size().unwrap();
 
-        stdin().read_line(&mut buffer).unwrap();
-
-        let input = buffer.to_owned().trim_end().parse().unwrap();
-        self.stdout.activate_raw_mode().unwrap();
-
-        input
+        self.push(draw::input(name.as_str(), 1, h - 3));
+        self.render();
     }
 
-    fn confirm(&self) -> bool {
-        let stdin = stdin();
+    fn flash_success(&mut self, message: String) {
+        let (_, h) = terminal_size().unwrap();
+        let sender = self.event_sender.clone();
 
-        for c in stdin.keys() {
-            return match c.unwrap() {
-                Key::Char('y') => true,
-                _ => false,
-            };
-        }
+        self.push(draw::position(draw::success(message), 1, h));
+        self.render();
 
-        false
+        thread::spawn(move || {
+            thread::sleep(Duration::from_secs(1));
+            sender.send(Event::Refresh).unwrap();
+        });
     }
 }

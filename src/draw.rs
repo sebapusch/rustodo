@@ -1,115 +1,132 @@
-pub mod draw {
-    use std::io::{stdout, Write};
-    use std::thread;
-    use std::time::Duration;
-    use termion::clear;
-    use termion::color;
-    use termion::cursor;
-    use termion::style;
-    use termion::terminal_size;
+use termion::clear;
+use termion::color;
+use termion::cursor;
+use termion::style;
 
-    #[allow(dead_code)]
-    pub enum FlashType {
-        Success,
-        Warning,
-        Danger,
+pub fn danger(text: String) -> String {
+    format!("{}{}{}", color::Fg(color::Yellow), text, style::Reset)
+}
+
+pub fn success(text: String) -> String {
+    format!("{}{}{}", color::Fg(color::Green), text, style::Reset)
+}
+
+pub fn bold(text: String) -> String {
+    format!("{}{}{}", style::Bold, text, style::Reset)
+}
+
+pub fn input(name: &str, x: u16, y: u16) -> String {
+    let mut out = String::new();
+
+    out.push_str(cursor::Show.to_string().as_str());
+    out.push('╭');
+    out.push_str(name);
+    for _ in 0..48 - name.len() {
+        out.push('─');
     }
-
-    pub fn flush() {
-        stdout().flush().unwrap();
+    out.push_str("╮\r\n");
+    out.push('│');
+    for _ in 0..48 {
+        out.push(' ');
     }
-
-    pub fn bold(text: String) -> String {
-        format!("{}{}{}", style::Bold, text, style::Reset)
+    out.push_str("│\r\n╰");
+    for _ in 0..48 {
+        out.push('─');
     }
+    out.push('╯');
+    out = position(out, x, y);
+    out.push_str(cursor::Goto(x + 1, y + 1).to_string().as_str());
 
-    pub fn warning(txt: String) {
-        text(format!(
-            "{}{}{}",
-            color::Fg(color::Yellow),
-            txt,
-            style::Reset
-        ));
-    }
+    out
+}
 
-    pub fn text_ln(text: String) {
-        println!("\r{}", text);
-    }
-
-    pub fn text(text: String) {
-        print!("\r{}", text);
-        flush();
-    }
-
-    pub fn reset() {
-        print!("{}{}{}", style::Reset, clear::All, cursor::Show);
-        flush();
-    }
-
-    pub fn clear_all() {
-        print!("{}", clear::All);
-        flush();
-    }
-
-    pub fn clear_content() {
-        let (_, terminal_height) = terminal_size().unwrap();
-
-        print!(
-            "{}{}{}{}",
-            cursor::Goto(1, terminal_height - 1),
-            clear::BeforeCursor,
-            cursor::Goto(1, 1),
-            cursor::Hide
-        );
-
-        flush();
-    }
-
-    //    pub fn cursor_top() {
-    //
-    //        let (_, terminal_height) = terminal_size().unwrap();
-    //
-    //        print!("\r{}", cursor::Goto(0, terminal_height));
-    //
-    //        flush();
-    //    }
-
-    pub fn clear_bottom() {
-        let (_, terminal_height) = terminal_size().unwrap();
-        print!(
-            "\r{}{}",
-            cursor::Goto(1, terminal_height - 3),
-            clear::AfterCursor,
-        );
-        flush();
-    }
-
-    pub fn cursor_bottom(show: bool) {
-        let (_, terminal_height) = terminal_size().unwrap();
-
-        print!("\r{}", cursor::Goto(1, terminal_height));
-
-        if show {
-            print!("\r{}", cursor::Show);
+pub fn bordered(content: String, title: String, title_bottom: String, width: u16) -> String {
+    let mut out = title_border_top(width, title);
+    for line in content.split("\n") {
+        out.push_str(line);
+        let visible_len = visible_length(line);
+        if visible_len == 0 {
+            continue;
         }
-
-        flush();
-    }
-
-    pub fn flash_msg(flash_type: FlashType, message: String) {
-        let color = match flash_type {
-            FlashType::Success => color::Fg(color::Green).to_string(),
-            FlashType::Warning => color::Fg(color::Yellow).to_string(),
-            FlashType::Danger => color::Fg(color::Red).to_string(),
+        let padding = if visible_len >= width - 1 {
+            0
+        } else {
+            width - visible_len - 1
         };
-        cursor_bottom(false);
-        print!("\r{}{}{}", color, message, style::Reset);
-        flush();
-
-        thread::spawn(|| {
-            thread::sleep(Duration::from_secs(2));
-            clear_bottom();
-            flush();
-        });
+        for _ in 0..padding {
+            out.push(' ');
+        }
+        out.push_str("│\r\n");
     }
+    out.push_str(title_border_bottom(width, title_bottom).as_str());
+    out
+}
+
+pub fn position(content: String, x: u16, y: u16) -> String {
+    let mut out = String::new();
+    let mut counter: u16 = 0;
+    for line in content.split("\n") {
+        out.push_str(cursor::Goto(x, y + counter).to_string().as_str());
+        out.push_str(line);
+        counter += 1;
+    }
+    out
+}
+
+pub fn title_border_top(mut length: u16, title: String) -> String {
+    length = length - (title.len() as u16) - 2;
+    let mut bar = String::new();
+    for _ in 0..length / 2 {
+        bar.push_str("─");
+    }
+    bar.push_str(title.as_str());
+    for _ in length / 2..length {
+        bar.push_str("─");
+    }
+    format!("╭{}╮\r\n", bar)
+}
+
+pub fn title_border_bottom(mut length: u16, title: String) -> String {
+    length = length - (title.len() as u16) - 2;
+    let mut bar = String::new();
+    for _ in 0..length / 2 {
+        bar.push_str("─");
+    }
+    bar.push_str(title.as_str());
+    for _ in length / 2..length {
+        bar.push_str("─");
+    }
+    format!("╰{}╯\r\n", bar)
+}
+
+pub fn clear_all() -> String {
+    format!(
+        "{}{}{}{}",
+        style::Reset,
+        clear::All,
+        cursor::Show,
+        cursor::Goto(1, 1)
+    )
+}
+
+pub fn hide_cursor() -> String {
+    format!("{}", cursor::Hide)
+}
+
+fn visible_length(input: &str) -> u16 {
+    let mut count = 0;
+    let mut in_escape = false;
+    let mut chars = input.chars();
+
+    while let Some(c) = chars.next() {
+        if c == '\x1B' {
+            in_escape = true;
+        } else if in_escape && c == 'm' {
+            in_escape = false;
+        } else if !in_escape {
+            count += 1;
+        }
+    }
+
+    count
 }

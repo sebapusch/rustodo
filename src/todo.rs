@@ -1,5 +1,5 @@
+use serde::{Deserialize, Serialize};
 use std::fs;
-use serde::{Serialize, Deserialize};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct TodoList {
@@ -8,24 +8,31 @@ pub struct TodoList {
 }
 
 impl TodoList {
+    pub fn new(name: String) -> Self {
+        TodoList {
+            name,
+            todos: Vec::new(),
+        }
+    }
+
     pub fn to_json(&self) -> String {
         return serde_json::to_string(self).expect("Error serializing json");
     }
 
-    pub fn save(&self, dir_path: &String) -> std::io::Result<()> {
+    pub fn save(&self, dir_path: &String) -> Result<(), String> {
         let json = self.to_json();
-        // todo clean path
         let path = format!("{}/{}.json", dir_path, self.name);
 
-        fs::write(&path, &json)
+        match fs::write(&path, &json) {
+            Ok(_) => Ok(()),
+            Err(err) => Err(err.to_string()),
+        }
     }
 
     pub fn completed(&self) -> usize {
-        
         let mut completed = 0;
 
         for item in self.todos.to_owned() {
-    
             if item.done {
                 completed += 1;
             }

@@ -1,6 +1,7 @@
 mod debug;
 mod draw;
 mod panel;
+mod reader;
 mod settings;
 mod todo;
 
@@ -12,49 +13,56 @@ pub use crate::panel::Panel;
 pub use crate::settings::Settings;
 pub use crate::todo::{Todo, TodoList};
 
-const PANEL: &str = "-p";
-const NEW: &str = "-n";
-const LIST: &str = "-l";
+enum Command {
+    OpenListPanel(String),
+    NewList(String),
+    ListLists,
+}
 
 fn main() {
     let settings = load_settings().unwrap();
 
-    let mut args: Vec<String> = env::args().collect();
-    args = args[1..].to_owned();
-
-    match get_command(&args) {
+    match parse_command() {
         Ok(cmd) => match cmd {
-            PANEL => match open_todo_list(&settings, &args[0].to_string()) {
-                Ok(list) => Panel::new(list, settings).start(),
-                Err(err) => println!("Unable to start panel: {}", err),
-            },
-            NEW => match add_todo_list(&settings, args) {
-                Ok(list) => Panel::new(list, settings).start(),
-                Err(err) => println!("Unable to start panel: {}", err),
-            },
-            LIST => {
-                list_todo_lists(&settings).unwrap();
+            Command::ListLists => {
+                list_todo_lists(&settings).unwrap_or_else(|err| {
+                    println!("{}", err);
+                });
             }
-            _ => {}
+            Command::NewList(name) => match create_todo_list(&settings, name) {
+                Ok(list) => Panel::new(list, settings).start(),
+                Err(err) => println!("{}", err),
+            },
+            Command::OpenListPanel(name) => match open_todo_list(&settings, name) {
+                Ok(list) => Panel::new(list, settings).start(),
+                Err(err) => println!("{}", err),
+            },
         },
-        Err(err) => println!("{}", err),
+        Err(err) => println!("Unable to parse command: {}", err),
     };
 }
 
-fn get_command(args: &Vec<String>) -> Result<&'static str, String> {
+fn parse_command() -> Result<Command, String> {
+    let mut args: Vec<String> = env::args().collect();
+    args = args[1..].to_owned();
+
     if args.is_empty() {
-        return Err(String::from("Please enter a valid command"));
+        return Err("Please enter a valid command".into());
     }
 
-    if args[0].starts_with("-n") {
-        return Ok("-n");
+    if args[0] == "new" {
+        if args.len() < 2 || args[1].trim().len() == 0 {
+            return Err("Please provide a valid list name".into());
+        } else {
+            return Ok(Command::NewList(args[1].trim().to_string()));
+        }
     }
 
-    if args[0].starts_with("-l") {
-        return Ok("-l");
+    if args[0] == "list" {
+        Ok(Command::ListLists)
+    } else {
+        Ok(Command::OpenListPanel(args[0].trim().into()))
     }
-
-    return Ok("-p");
 }
 
 fn list_todo_lists(settings: &Settings) -> Result<(), String> {
@@ -84,7 +92,7 @@ fn list_todo_lists(settings: &Settings) -> Result<(), String> {
 
         let entry_name = entry.file_name().to_str().to_owned().unwrap().to_string();
 
-        let todo_list = match open_todo_list(settings, &entry_name) {
+        let todo_list = match open_todo_list(settings, entry_name.to_string()) {
             Ok(todo_list) => todo_list,
             Err(_) => continue,
         };
@@ -100,27 +108,17 @@ fn list_todo_lists(settings: &Settings) -> Result<(), String> {
     Ok(())
 }
 
-fn add_todo_list(settings: &Settings, args: Vec<String>) -> Result<TodoList, String> {
-    if args.len() < 2 {
-        return Err(String::from("Please provide a valid list name"));
+fn create_todo_list(settings: &Settings, name: String) -> Result<TodoList, String> {
+    let created_list = TodoList::new(name);
+
+    match created_list.save(&settings.todopath) {
+        Ok(_) => Ok(created_list),
+        Err(err) => Err(err),
     }
-
-    let todo_list = TodoList {
-        name: args[1].to_string(),
-        todos: Vec::new(),
-    };
-
-    todo_list
-        .save(&settings.todopath)
-        .expect("Error writing file");
-
-    Ok(todo_list)
 }
 
-fn open_todo_list(settings: &Settings, name: &String) -> Result<TodoList, String> {
-    let dir_path = &settings.todopath;
-
-    let path = format!("{}/{}.json", &dir_path, &name.replace(".json", ""));
+fn open_todo_list(settings: &Settings, name: String) -> Result<TodoList, String> {
+    let path = format!("{}/{}.json", &settings.todopath, &name.replace(".json", ""));
 
     let mut file = match File::open(&path) {
         Ok(file) => file,
