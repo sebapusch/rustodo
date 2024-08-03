@@ -31,7 +31,8 @@ impl Reader {
                             sender.send(Event::Input(Operation::Update)).unwrap();
                             Event::Commit(Operation::Update, Reader::input())
                         }
-                        Key::Char('d') => Event::Delete,
+                        Key::Char('d') => Event::Input(Operation::Delete),
+                        Key::Char('y') => Event::Commit(Operation::Delete, String::new()),
                         Key::Right => Event::MoveUp,
                         Key::Left => Event::MoveDown,
                         other => Event::KeyPressed(other),

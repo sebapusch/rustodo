@@ -3,7 +3,6 @@ use crate::reader::Reader;
 pub use crate::todo::{Todo, TodoList};
 pub use crate::Settings;
 
-use std::collections::HashMap;
 use std::io::{stdout, Stdout, Write};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
@@ -16,6 +15,7 @@ use termion::terminal_size;
 pub enum Operation {
     Create,
     Update,
+    Delete,
 }
 
 #[derive(PartialEq, Eq)]
@@ -28,7 +28,6 @@ pub enum Event {
     HighlightDown,
     Toggle,
     Save,
-    Delete,
     Input(Operation),
     Commit(Operation, String),
     KeyPressed(Key),
@@ -43,7 +42,6 @@ pub struct Panel {
     buffer: String,
     event_sender: Sender<Event>,
     event_receiver: Receiver<Event>,
-    event_queue: HashMap<Key, Vec<fn(&mut Panel)>>,
     reader: Reader,
 }
 
@@ -51,7 +49,6 @@ impl Panel {
     pub fn new(list: TodoList, settings: Settings) -> Self {
         let stdout = stdout().into_raw_mode().unwrap();
         let (event_sender, event_receiver) = mpsc::channel();
-        let event_queue = HashMap::new();
         let reader = Reader::new(event_sender.clone());
         Panel {
             list,
@@ -62,7 +59,6 @@ impl Panel {
             buffer: String::new(),
             event_sender,
             event_receiver,
-            event_queue,
         }
     }
 
@@ -105,14 +101,6 @@ impl Panel {
         self.buffer.push_str(text.as_str());
     }
 
-    fn on_click(&mut self, k: Key, callback: fn(&mut Panel)) {
-        if let Some(queue) = self.event_queue.get_mut(&k) {
-            queue.push(callback);
-        } else {
-            self.event_queue.insert(k, vec![callback]);
-        }
-    }
-
     fn draw_todo(&mut self, todo: &Todo, i: usize) -> String {
         let mut out = String::new();
 
@@ -133,26 +121,26 @@ impl Panel {
         }
     }
 
-    fn delete_todo(&mut self) {
+    fn draw_confirm(&mut self) {
         let (_, h) = terminal_size().unwrap();
         self.push(position(danger("Are you sure? (y/n)".into()), 1, h));
         self.render();
-        self.on_click(Key::Char('y'), |panel| {
-            panel.list.todos.remove(panel.highlighted);
-            if panel.list.todos.len() == 0 {
-                panel.highlighted = 0;
-            } else if panel.highlighted == panel.list.todos.len() {
-                panel.highlighted -= 1;
-            }
-            panel.refresh();
-        });
     }
 
-    fn edit_todo(&mut self, item: String) {
+    fn delete_todo(&mut self) {
+        self.list.todos.remove(self.highlighted);
+        if self.list.todos.len() == 0 {
+            self.highlighted = 0;
+        } else if self.highlighted == self.list.todos.len() {
+            self.highlighted -= 1;
+        }
+    }
+
+    fn update_todo(&mut self, item: String) {
         self.list.todos[self.highlighted].item = item;
     }
 
-    fn add_todo(&mut self, item: String) {
+    fn create_todo(&mut self, item: String) {
         self.list.todos.push(Todo {
             id: 2,
             item,
@@ -194,12 +182,14 @@ impl Panel {
                         self.draw_input(self.list.todos[self.highlighted].item.clone())
                     }
                 }
+                Operation::Delete => self.draw_confirm(),
             },
             Event::Commit(op, content) => {
                 self.stdout.activate_raw_mode().unwrap();
                 match op {
-                    Operation::Create => self.add_todo(content),
-                    Operation::Update => self.edit_todo(content),
+                    Operation::Create => self.create_todo(content),
+                    Operation::Update => self.update_todo(content),
+                    Operation::Delete => self.delete_todo(),
                 }
                 self.refresh();
             }
@@ -227,11 +217,6 @@ impl Panel {
                     self.refresh();
                 }
             }
-            Event::Delete => {
-                if self.list.todos.len() > 0 {
-                    self.delete_todo();
-                }
-            }
             Event::Toggle => {
                 if self.list.todos.len() > 0 {
                     self.list.todos[self.highlighted].toggle();
@@ -242,14 +227,7 @@ impl Panel {
                 self.list.save(&self.settings.todopath).expect("Error");
                 self.flash_success("Successfully saved list".into());
             }
-            Event::KeyPressed(k) => {
-                if let Some(queue) = self.event_queue.get_mut(&k).cloned() {
-                    for callback in queue {
-                        callback(self);
-                    }
-                }
-                self.event_queue.remove(&k);
-            }
+            Event::KeyPressed(_) => {}
             Event::IoError(_) => {}
         }
 
