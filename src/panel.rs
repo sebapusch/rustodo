@@ -20,7 +20,7 @@ pub enum Operation {
 
 #[derive(PartialEq, Eq)]
 pub enum Event {
-    Refresh,
+    Redraw,
     Quit,
     MoveUp,
     MoveDown,
@@ -63,21 +63,25 @@ impl Panel {
     }
 
     pub fn start(&mut self) {
-        self.refresh();
+        self.redraw();
         self.start_loop();
-    }
-
-    fn refresh(&mut self) {
-        self.push(draw::clear_all());
-        self.push(draw::hide_cursor());
-        let content = self.draw();
-        self.push(content);
-        self.render();
     }
 
     fn render(&mut self) {
         self.stdout.write_all(self.buffer.as_bytes()).unwrap();
         self.stdout.flush().unwrap();
+    }
+
+    fn push(&mut self, text: String) {
+        self.buffer.push_str(text.as_str());
+    }
+
+    fn redraw(&mut self) {
+        self.push(draw::clear_all());
+        self.push(draw::hide_cursor());
+        let content = self.draw();
+        self.push(content);
+        self.render();
     }
 
     fn draw(&mut self) -> String {
@@ -95,10 +99,6 @@ impl Panel {
         let title_bottom = format!("{}/{}", self.list.completed(), self.list.total());
 
         draw::bordered(out, self.list.name.clone(), title_bottom, 100)
-    }
-
-    fn push(&mut self, text: String) {
-        self.buffer.push_str(text.as_str());
     }
 
     fn draw_todo(&mut self, todo: &Todo, i: usize) -> String {
@@ -125,6 +125,28 @@ impl Panel {
         let (_, h) = terminal_size().unwrap();
         self.push(position(danger("Are you sure? (y/n)".into()), 1, h));
         self.render();
+    }
+
+    fn draw_input(&mut self, name: String) {
+        self.stdout.suspend_raw_mode().unwrap();
+
+        let (_, h) = terminal_size().unwrap();
+
+        self.push(draw::input(name.as_str(), 1, h - 3));
+        self.render();
+    }
+
+    fn draw_flash_success(&mut self, message: String) {
+        let (_, h) = terminal_size().unwrap();
+        let sender = self.event_sender.clone();
+
+        self.push(draw::position(draw::success(message), 1, h));
+        self.render();
+
+        thread::spawn(move || {
+            thread::sleep(Duration::from_secs(1));
+            sender.send(Event::Redraw).unwrap();
+        });
     }
 
     fn delete_todo(&mut self) {
@@ -173,7 +195,7 @@ impl Panel {
         let event = self.event_receiver.recv().unwrap();
 
         match event {
-            Event::Refresh => self.refresh(),
+            Event::Redraw => self.redraw(),
             Event::Quit => return,
             Event::Input(op) => match op {
                 Operation::Create => self.draw_input("Todo".into()),
@@ -191,68 +213,46 @@ impl Panel {
                     Operation::Update => self.update_todo(content),
                     Operation::Delete => self.delete_todo(),
                 }
-                self.refresh();
+                self.redraw();
             }
             Event::MoveUp => {
                 if self.list.todos.len() >= 2 && self.highlighted < self.list.todos.len() - 1 {
                     self.move_down();
-                    self.refresh();
+                    self.redraw();
                 }
             }
             Event::MoveDown => {
                 if self.list.todos.len() >= 2 && self.highlighted > 0 {
                     self.move_up();
-                    self.refresh();
+                    self.redraw();
                 }
             }
             Event::HighlightUp => {
                 if self.highlighted > 0 {
                     self.highlighted -= 1;
-                    self.refresh();
+                    self.redraw();
                 }
             }
             Event::HighlightDown => {
                 if self.highlighted < self.list.todos.len() - 1 {
                     self.highlighted += 1;
-                    self.refresh();
+                    self.redraw();
                 }
             }
             Event::Toggle => {
                 if self.list.todos.len() > 0 {
                     self.list.todos[self.highlighted].toggle();
-                    self.refresh();
+                    self.redraw();
                 }
             }
             Event::Save => {
                 self.list.save(&self.settings.todopath).expect("Error");
-                self.flash_success("Successfully saved list".into());
+                self.draw_flash_success("Successfully saved list".into());
             }
             Event::KeyPressed(_) => {}
             Event::IoError(_) => {}
         }
 
         self.handle_next_event();
-    }
-
-    fn draw_input(&mut self, name: String) {
-        self.stdout.suspend_raw_mode().unwrap();
-
-        let (_, h) = terminal_size().unwrap();
-
-        self.push(draw::input(name.as_str(), 1, h - 3));
-        self.render();
-    }
-
-    fn flash_success(&mut self, message: String) {
-        let (_, h) = terminal_size().unwrap();
-        let sender = self.event_sender.clone();
-
-        self.push(draw::position(draw::success(message), 1, h));
-        self.render();
-
-        thread::spawn(move || {
-            thread::sleep(Duration::from_secs(1));
-            sender.send(Event::Refresh).unwrap();
-        });
     }
 }
