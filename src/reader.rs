@@ -1,4 +1,4 @@
-use crate::panel::{Event, FilterType, Operation};
+use crate::panel::{Event, Operation};
 use std::{io::stdin, sync::mpsc::Sender, thread};
 use termion::event::Key;
 use termion::input::TermRead;

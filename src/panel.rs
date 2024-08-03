@@ -1,8 +1,6 @@
-use crate::debug::debug_log;
 use crate::draw::{self, danger, position};
 use crate::reader::Reader;
 pub use crate::todo::{Todo, TodoList};
-use crate::Command;
 pub use crate::Settings;
 
 use std::io::{stdout, Stdout, Write};
