@@ -1,7 +1,7 @@
 
 ## RUSTODO
 
-Primitive interactive terminal TODO app built with rust 
+Primitive interactive terminal TODO app built with rust
 
 ```
 [x] Rust
