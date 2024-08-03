@@ -67,6 +67,12 @@ impl Panel {
         self.start_loop();
     }
 
+    pub fn quit(&mut self) {
+        self.push(draw::clear_all());
+        self.push(draw::show_cursor());
+        self.render();
+    }
+
     fn render(&mut self) {
         self.stdout.write_all(self.buffer.as_bytes()).unwrap();
         self.stdout.flush().unwrap();
@@ -86,6 +92,7 @@ impl Panel {
 
     fn draw(&mut self) -> String {
         let mut out = String::new();
+        let (w, _) = terminal_size().unwrap();
 
         if self.list.todos.len() == 0 {
             out = "Empty list...".into();
@@ -98,7 +105,7 @@ impl Panel {
 
         let title_bottom = format!("{}/{}", self.list.completed(), self.list.total());
 
-        draw::bordered(out, self.list.name.clone(), title_bottom, 100)
+        draw::bordered(out, self.list.name.clone(), title_bottom, w)
     }
 
     fn draw_todo(&mut self, todo: &Todo, i: usize) -> String {
@@ -196,7 +203,7 @@ impl Panel {
 
         match event {
             Event::Redraw => self.redraw(),
-            Event::Quit => return,
+            Event::Quit => return self.quit(),
             Event::Input(op) => match op {
                 Operation::Create => self.draw_input("Todo".into()),
                 Operation::Update => {

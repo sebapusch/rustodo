@@ -113,6 +113,10 @@ pub fn hide_cursor() -> String {
     format!("{}", cursor::Hide)
 }
 
+pub fn show_cursor() -> String {
+    format!("{}", cursor::Show)
+}
+
 fn visible_length(input: &str) -> u16 {
     let mut count = 0;
     let mut in_escape = false;
