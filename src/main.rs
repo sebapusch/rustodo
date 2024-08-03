@@ -122,12 +122,7 @@ fn open_todo_list(settings: &Settings, name: String) -> Result<TodoList, String>
 
     let mut file = match File::open(&path) {
         Ok(file) => file,
-        Err(err) => {
-            return Err(format!(
-                "Unable to open todo file at path '{}': {}",
-                &path, err
-            ))
-        }
+        Err(err) => return Err(format!("Invalid todo list name '{}': {}", name, err)),
     };
 
     let mut data = String::new();
