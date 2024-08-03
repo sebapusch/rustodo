@@ -1,4 +1,4 @@
-use crate::panel::{Event, Operation};
+use crate::panel::{Event, FilterType, Operation};
 use std::{io::stdin, sync::mpsc::Sender, thread};
 use termion::event::Key;
 use termion::input::TermRead;
@@ -33,6 +33,7 @@ impl Reader {
                         }
                         Key::Char('d') => Event::Input(Operation::Delete),
                         Key::Char('y') => Event::Commit(Operation::Delete, String::new()),
+                        Key::Char('f') => Event::Filter,
                         Key::Right => Event::MoveUp,
                         Key::Left => Event::MoveDown,
                         other => Event::KeyPressed(other),

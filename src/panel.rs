@@ -1,6 +1,8 @@
+use crate::debug::debug_log;
 use crate::draw::{self, danger, position};
 use crate::reader::Reader;
 pub use crate::todo::{Todo, TodoList};
+use crate::Command;
 pub use crate::Settings;
 
 use std::io::{stdout, Stdout, Write};
@@ -19,6 +21,12 @@ pub enum Operation {
 }
 
 #[derive(PartialEq, Eq)]
+pub enum FilterType {
+    Completed,
+    NonCompleted,
+}
+
+#[derive(PartialEq, Eq)]
 pub enum Event {
     Redraw,
     Quit,
@@ -28,6 +36,7 @@ pub enum Event {
     HighlightDown,
     Toggle,
     Save,
+    Filter,
     Input(Operation),
     Commit(Operation, String),
     KeyPressed(Key),
@@ -43,6 +52,7 @@ pub struct Panel {
     event_sender: Sender<Event>,
     event_receiver: Receiver<Event>,
     reader: Reader,
+    filter: Option<FilterType>,
 }
 
 impl Panel {
@@ -59,6 +69,7 @@ impl Panel {
             buffer: String::new(),
             event_sender,
             event_receiver,
+            filter: None,
         }
     }
 
@@ -90,25 +101,45 @@ impl Panel {
         self.render();
     }
 
-    fn draw(&mut self) -> String {
+    fn draw_todos(&mut self) -> (String, usize, usize) {
         let mut out = String::new();
-        let (w, _) = terminal_size().unwrap();
-
-        if self.list.todos.len() == 0 {
-            out = "Empty list...".into();
-        } else {
-            for i in 0..self.list.todos.len() {
-                let todo = self.list.todos[i].clone();
-                out.push_str(self.draw_todo(&todo, i).as_str());
+        let mut completed = 0;
+        for i in 0..self.list.todos.len() {
+            let todo = &self.list.todos[i];
+            if todo.done {
+                completed += 1;
+            }
+            if let Some(filter) = &self.filter {
+                match filter {
+                    FilterType::Completed => {
+                        if todo.done {
+                            out.push_str(self.draw_todo(todo, i == self.highlighted).as_str());
+                        }
+                    }
+                    FilterType::NonCompleted => {
+                        if !todo.done {
+                            out.push_str(self.draw_todo(todo, i == self.highlighted).as_str());
+                        }
+                    }
+                }
+            } else {
+                out.push_str(self.draw_todo(todo, i == self.highlighted).as_str());
             }
         }
+        (out, completed, self.list.todos.len())
+    }
 
-        let title_bottom = format!("{}/{}", self.list.completed(), self.list.total());
-
+    fn draw(&mut self) -> String {
+        let (mut out, completed, total) = self.draw_todos();
+        if out.is_empty() {
+            out.push_str("Nothing to display...");
+        }
+        let (w, _) = terminal_size().unwrap();
+        let title_bottom = format!("{}/{}", completed, total);
         draw::bordered(out, self.list.name.clone(), title_bottom, w)
     }
 
-    fn draw_todo(&mut self, todo: &Todo, i: usize) -> String {
+    fn draw_todo(&self, todo: &Todo, highlight: bool) -> String {
         let mut out = String::new();
 
         if todo.done {
@@ -121,7 +152,7 @@ impl Panel {
         out.push_str(&todo.item.as_str());
         out.push('\n');
 
-        if i == self.highlighted {
+        if highlight {
             draw::bold(out)
         } else {
             out
@@ -255,6 +286,17 @@ impl Panel {
             Event::Save => {
                 self.list.save(&self.settings.todopath).expect("Error");
                 self.draw_flash_success("Successfully saved list".into());
+            }
+            Event::Filter => {
+                if self.filter.is_none() {
+                    self.filter = Some(FilterType::NonCompleted);
+                } else {
+                    self.filter = match self.filter.as_ref().unwrap() {
+                        FilterType::NonCompleted => Some(FilterType::Completed),
+                        FilterType::Completed => None,
+                    };
+                }
+                self.redraw();
             }
             Event::KeyPressed(_) => {}
             Event::IoError(_) => {}
