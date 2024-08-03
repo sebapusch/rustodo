@@ -1,15 +1,6 @@
 
-## RUSTODO
+## Rustodo
 
 Primitive interactive terminal TODO app built with rust
 
-```
-[x] Rust
-[x] Is
-[ ] Not
-[x] Fun
-
-
-
-Successfully saved list
-```
+![Rustodo](./asset/rustodo.gif)
