@@ -1,4 +1,4 @@
-use crate::draw::{self, danger, position};
+use crate::draw::{self, danger, position, warning};
 use crate::reader::Reader;
 pub use crate::todo::{Todo, TodoList};
 pub use crate::Settings;
@@ -159,7 +159,7 @@ impl Panel {
 
     fn draw_confirm(&mut self) {
         let (_, h) = terminal_size().unwrap();
-        self.push(position(danger("Are you sure? (y/n)".into()), 1, h));
+        self.push(position(warning("Are you sure? (y/n)".into()), 1, h));
         self.render();
     }
 
@@ -172,11 +172,11 @@ impl Panel {
         self.render();
     }
 
-    fn draw_flash_success(&mut self, message: String) {
+    fn draw_flash(&mut self, out: String) {
         let (_, h) = terminal_size().unwrap();
         let sender = self.event_sender.clone();
 
-        self.push(draw::position(draw::success(message), 1, h));
+        self.push(draw::position(out, 1, h));
         self.render();
 
         thread::spawn(move || {
@@ -283,7 +283,7 @@ impl Panel {
             }
             Event::Save => {
                 self.list.save(&self.settings.todopath).expect("Error");
-                self.draw_flash_success("Successfully saved list".into());
+                self.draw_flash(draw::success("Successfully saved list".into()));
             }
             Event::Filter => {} /*{
             if self.filter.is_none() {
@@ -297,7 +297,9 @@ impl Panel {
             self.redraw();
             }}*/
             Event::KeyPressed(_) => {}
-            Event::IoError(_) => {}
+            Event::IoError(err) => {
+                self.draw_flash(draw::danger(format!("Unexpected i/o error: {}", err)));
+            }
         }
 
         self.handle_next_event();

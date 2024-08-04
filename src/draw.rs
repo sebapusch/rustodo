@@ -3,12 +3,16 @@ use termion::color;
 use termion::cursor;
 use termion::style;
 
-pub fn danger(text: String) -> String {
+pub fn warning(text: String) -> String {
     format!("{}{}{}", color::Fg(color::Yellow), text, style::Reset)
 }
 
 pub fn success(text: String) -> String {
     format!("{}{}{}", color::Fg(color::Green), text, style::Reset)
+}
+
+pub fn danger(text: String) -> String {
+    format!("{}{}{}", color::Fg(color::Red), text, style::Reset)
 }
 
 pub fn bold(text: String) -> String {
