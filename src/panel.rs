@@ -1,4 +1,4 @@
-use crate::draw::{self, danger, position, warning};
+use crate::draw::{self, position, warning};
 use crate::reader::Reader;
 pub use crate::todo::{Todo, TodoList};
 pub use crate::Settings;
@@ -19,14 +19,23 @@ pub enum Operation {
 }
 
 #[derive(PartialEq, Eq)]
+pub enum UiSection {
+    Status,
+    Content,
+}
+
+/*
+#[derive(PartialEq, Eq)]
 pub enum FilterType {
     Completed,
     NonCompleted,
 }
+*/
 
 #[derive(PartialEq, Eq)]
 pub enum Event {
     Redraw,
+    Clear(Option<UiSection>),
     Quit,
     MoveUp,
     MoveDown,
@@ -50,7 +59,6 @@ pub struct Panel {
     event_sender: Sender<Event>,
     event_receiver: Receiver<Event>,
     reader: Reader,
-    filter: Option<FilterType>,
 }
 
 impl Panel {
@@ -67,11 +75,11 @@ impl Panel {
             buffer: String::new(),
             event_sender,
             event_receiver,
-            filter: None,
         }
     }
 
     pub fn start(&mut self) {
+        self.clear(None, false);
         self.redraw();
         self.start_loop();
     }
@@ -92,11 +100,28 @@ impl Panel {
     }
 
     fn redraw(&mut self) {
-        self.push(draw::clear_all());
-        self.push(draw::hide_cursor());
+        let (h, w) = terminal_size().unwrap();
+        self.clear(Some(UiSection::Content), false);
         let content = self.draw();
         self.push(content);
         self.render();
+    }
+
+    fn clear(&mut self, section: Option<UiSection>, render: bool) {
+        self.push(match section {
+            Some(s) => {
+                let (w, h) = terminal_size().unwrap();
+                match s {
+                    UiSection::Content => draw::clear_before(w, h - 5),
+                    UiSection::Status => draw::clear_after(w, h - 5),
+                }
+            }
+            None => draw::clear_all(),
+        });
+        self.push(draw::hide_cursor());
+        if render {
+            self.render();
+        }
     }
 
     fn draw_todos(&mut self) -> (String, usize, usize) {
@@ -107,7 +132,10 @@ impl Panel {
             if todo.done {
                 completed += 1;
             }
-            if let Some(filter) = &self.filter {
+
+            out.push_str(self.draw_todo(todo, i == self.highlighted).as_str());
+
+            /*if let Some(filter) = &self.filter {
                 match filter {
                     FilterType::Completed => {
                         if todo.done {
@@ -122,7 +150,7 @@ impl Panel {
                 }
             } else {
                 out.push_str(self.draw_todo(todo, i == self.highlighted).as_str());
-            }
+                }*/
         }
         (out, completed, self.list.todos.len())
     }
@@ -166,9 +194,9 @@ impl Panel {
     fn draw_input(&mut self, name: String) {
         self.stdout.suspend_raw_mode().unwrap();
 
-        let (_, h) = terminal_size().unwrap();
+        let (w, h) = terminal_size().unwrap();
 
-        self.push(draw::input(name.as_str(), 1, h - 3));
+        self.push(draw::input(name.as_str(), 1, h - 2, w));
         self.render();
     }
 
@@ -181,7 +209,7 @@ impl Panel {
 
         thread::spawn(move || {
             thread::sleep(Duration::from_secs(1));
-            sender.send(Event::Redraw).unwrap();
+            sender.send(Event::Clear(Some(UiSection::Status))).unwrap();
         });
     }
 
@@ -249,6 +277,7 @@ impl Panel {
                     Operation::Update => self.update_todo(content),
                     Operation::Delete => self.delete_todo(),
                 }
+                self.clear(None, false);
                 self.redraw();
             }
             Event::MoveUp => {
@@ -299,6 +328,9 @@ impl Panel {
             Event::KeyPressed(_) => {}
             Event::IoError(err) => {
                 self.draw_flash(draw::danger(format!("Unexpected i/o error: {}", err)));
+            }
+            Event::Clear(section) => {
+                self.clear(section, true);
             }
         }
 

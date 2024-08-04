@@ -1,4 +1,4 @@
-use crate::panel::{Event, Operation};
+use crate::panel::{Event, Operation, UiSection};
 use std::{io::stdin, sync::mpsc::Sender, thread};
 use termion::event::Key;
 use termion::input::TermRead;
@@ -31,8 +31,15 @@ impl Reader {
                             sender.send(Event::Input(Operation::Update)).unwrap();
                             Event::Commit(Operation::Update, Reader::input())
                         }
-                        Key::Char('d') => Event::Input(Operation::Delete),
-                        Key::Char('y') => Event::Commit(Operation::Delete, String::new()),
+                        Key::Char('d') => {
+                            sender.send(Event::Input(Operation::Delete)).unwrap();
+                            if Reader::confirm() {
+                                Event::Commit(Operation::Delete, String::new())
+                            } else {
+                                Event::Clear(Some(UiSection::Status))
+                            }
+                        }
+                        Key::Char('r') => Event::Redraw,
                         Key::Char('f') => Event::Filter,
                         Key::Right => Event::MoveUp,
                         Key::Left => Event::MoveDown,
@@ -43,6 +50,22 @@ impl Reader {
                 sender.send(event).unwrap();
             }
         });
+    }
+
+    fn confirm() -> bool {
+        for e in stdin().keys() {
+            if let Some(confirmed) = match e {
+                Ok(k) => match k {
+                    Key::Char('y') => Some(true),
+                    Key::Char('n') => Some(false),
+                    _ => None,
+                },
+                Err(_) => Some(false),
+            } {
+                return confirmed;
+            }
+        }
+        false
     }
 
     fn input() -> String {

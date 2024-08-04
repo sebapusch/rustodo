@@ -19,22 +19,22 @@ pub fn bold(text: String) -> String {
     format!("{}{}{}", style::Bold, text, style::Reset)
 }
 
-pub fn input(name: &str, x: u16, y: u16) -> String {
+pub fn input(name: &str, x: u16, y: u16, width: u16) -> String {
     let mut out = String::new();
 
     out.push_str(cursor::Show.to_string().as_str());
     out.push('╭');
     out.push_str(name);
-    for _ in 0..48 - name.len() {
+    for _ in 0..width - 2 - (name.len() as u16) {
         out.push('─');
     }
     out.push_str("╮\r\n");
     out.push('│');
-    for _ in 0..48 {
+    for _ in 0..width - 2 {
         out.push(' ');
     }
     out.push_str("│\r\n╰");
-    for _ in 0..48 {
+    for _ in 0..width - 2 {
         out.push('─');
     }
     out.push('╯');
@@ -101,6 +101,28 @@ pub fn title_border_bottom(mut length: u16, title: String) -> String {
         bar.push_str("─");
     }
     format!("╰{}╯\r\n", bar)
+}
+
+pub fn clear_before(x: u16, y: u16) -> String {
+    format!(
+        "{}{}{}{}{}",
+        style::Reset,
+        cursor::Goto(x, y),
+        clear::BeforeCursor,
+        cursor::Show,
+        cursor::Goto(1, 1)
+    )
+}
+
+pub fn clear_after(x: u16, y: u16) -> String {
+    format!(
+        "{}{}{}{}{}",
+        style::Reset,
+        cursor::Goto(x, y),
+        clear::AfterCursor,
+        cursor::Show,
+        cursor::Goto(1, 1)
+    )
 }
 
 pub fn clear_all() -> String {
