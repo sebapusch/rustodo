@@ -285,17 +285,17 @@ impl Panel {
                 self.list.save(&self.settings.todopath).expect("Error");
                 self.draw_flash_success("Successfully saved list".into());
             }
-            Event::Filter => {
-                if self.filter.is_none() {
-                    self.filter = Some(FilterType::NonCompleted);
-                } else {
-                    self.filter = match self.filter.as_ref().unwrap() {
-                        FilterType::NonCompleted => Some(FilterType::Completed),
-                        FilterType::Completed => None,
-                    };
-                }
-                self.redraw();
+            Event::Filter => {} /*{
+            if self.filter.is_none() {
+            self.filter = Some(FilterType::NonCompleted);
+            } else {
+            self.filter = match self.filter.as_ref().unwrap() {
+            FilterType::NonCompleted => Some(FilterType::Completed),
+            FilterType::Completed => None,
+            };
             }
+            self.redraw();
+            }}*/
             Event::KeyPressed(_) => {}
             Event::IoError(_) => {}
         }
