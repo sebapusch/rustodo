@@ -58,6 +58,7 @@ pub struct Panel {
     buffer: String,
     event_sender: Sender<Event>,
     event_receiver: Receiver<Event>,
+    suspend_clear_sender: Option<Sender<()>>,
     reader: Reader,
 }
 
@@ -75,6 +76,7 @@ impl Panel {
             buffer: String::new(),
             event_sender,
             event_receiver,
+            suspend_clear_sender: None,
         }
     }
 
@@ -100,7 +102,6 @@ impl Panel {
     }
 
     fn redraw(&mut self) {
-        let (h, w) = terminal_size().unwrap();
         self.clear(Some(UiSection::Content), false);
         let content = self.draw();
         self.push(content);
@@ -122,6 +123,7 @@ impl Panel {
         if render {
             self.render();
         }
+        self.suspend_clear_sender = None;
     }
 
     fn draw_todos(&mut self) -> (String, usize, usize) {
@@ -186,12 +188,16 @@ impl Panel {
     }
 
     fn draw_confirm(&mut self) {
+        self.suspend_clear();
+
         let (_, h) = terminal_size().unwrap();
         self.push(position(warning("Are you sure? (y/n)".into()), 1, h));
         self.render();
     }
 
     fn draw_input(&mut self, name: String) {
+        self.suspend_clear();
+
         self.stdout.suspend_raw_mode().unwrap();
 
         let (w, h) = terminal_size().unwrap();
@@ -200,16 +206,29 @@ impl Panel {
         self.render();
     }
 
+    fn suspend_clear(&mut self) {
+        if let Some(sender) = &self.suspend_clear_sender {
+            sender.send(()).unwrap()
+        }
+    }
+
     fn draw_flash(&mut self, out: String) {
+        self.suspend_clear();
+
         let (_, h) = terminal_size().unwrap();
+        let (cancel_sender, cancel_receiver) = mpsc::channel();
         let sender = self.event_sender.clone();
+
+        self.suspend_clear_sender = Some(cancel_sender);
 
         self.push(draw::position(out, 1, h));
         self.render();
 
         thread::spawn(move || {
             thread::sleep(Duration::from_secs(1));
-            sender.send(Event::Clear(Some(UiSection::Status))).unwrap();
+            if cancel_receiver.try_recv().is_err() {
+                sender.send(Event::Clear(Some(UiSection::Status))).unwrap();
+            }
         });
     }
 
