@@ -69,8 +69,16 @@ impl Reader {
     }
 
     fn input() -> String {
-        let mut buffer = String::with_capacity(30);
-        stdin().read_line(&mut buffer).unwrap();
-        buffer.trim().into()
+        let mut buffer = String::new();
+        for k in stdin().keys() {
+            match k.unwrap() {
+                Key::Char('\n') => break,
+                Key::Char(c) => {
+                    buffer.push(c);
+                }
+                _ => {}
+            }
+        }
+        buffer
     }
 }

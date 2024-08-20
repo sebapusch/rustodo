@@ -103,7 +103,7 @@ impl Panel {
 
     fn redraw(&mut self) {
         self.clear(Some(UiSection::Content), false);
-        let content = self.draw();
+        let content = self.draw_content();
         self.push(content);
         self.render();
     }
@@ -157,7 +157,7 @@ impl Panel {
         (out, completed, self.list.todos.len())
     }
 
-    fn draw(&mut self) -> String {
+    fn draw_content(&mut self) -> String {
         let (mut out, completed, total) = self.draw_todos();
         if out.is_empty() {
             out.push_str("Nothing to display...");

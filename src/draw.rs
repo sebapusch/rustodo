@@ -143,7 +143,7 @@ pub fn show_cursor() -> String {
     format!("{}", cursor::Show)
 }
 
-fn visible_length(input: &str) -> u16 {
+pub fn visible_length(input: &str) -> u16 {
     let mut count = 0;
     let mut in_escape = false;
     let mut chars = input.chars();
